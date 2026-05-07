@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Control Invernadero</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+    <h1>Panel de Control IoT</h1>
+    <div>
+        <p>Temperatura: <span id="temp">--</span>°C</p>
+        <p>Humedad Tierra: <span id="tierra">--</span>%</p>
+    </div>
+    <button onclick="toggleBomba(true)">Encender Bomba</button>
+    <button onclick="toggleBomba(false)">Apagar Bomba</button>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA3E8fbd9-Uw2VAAoTyb1ltLYLDE2PTWTw",
+            databaseURL: "https://sensores-temp-y-humedad-default-rtdb.firebaseio.com",
+            projectId: "sensores-temp-y-humedad",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Escuchar cambios en sensores
+        db.ref('sensor').on('value', (snap) => {
+            const data = snap.val();
+            document.getElementById('temp').innerText = data.temperatura;
+            document.getElementById('tierra').innerText = data.tierra;
+        });
+
+        // Función para el botón
+        void function toggleBomba(estado) {
+            db.ref('actuadores').update({ bomba: estado });
+        }
+    </script>
+</body>
+</html>
