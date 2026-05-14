@@ -2,85 +2,137 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Panel de Control - Jesús</title>
-    <!-- Cargando Firebase SDK -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invernadero Planta-Pro-Max</title>
+    
+    <!-- Firebase SDK (Versión estable 8.10.0) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #eef2f3; color: #333; }
-        .container { max-width: 500px; margin: 30px auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-        .sensor-val { font-size: 24px; font-weight: bold; color: #2c3e50; }
-        .btn { padding: 20px 40px; font-size: 20px; cursor: pointer; border: none; border-radius: 50px; color: white; transition: 0.3s; width: 80%; }
-        .on { background: #27ae60; box-shadow: 0 4px #1e8449; }
-        .on:active { box-shadow: 0 0; transform: translateY(4px); }
-        .off { background: #c0392b; box-shadow: 0 4px #922b21; }
-        .off:active { box-shadow: 0 0; transform: translateY(4px); }
+        :root {
+            --primary: #2c3e50;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --bg: #f5f6fa;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 { color: var(--primary); margin-bottom: 20px; font-size: 24px; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        
+        .stat-box { background: #f9f9f9; padding: 15px; border-radius: 12px; border: 1px solid #eee; }
+        .stat-label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; display: block; }
+        .stat-value { font-size: 20px; font-weight: bold; color: var(--primary); }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .btn-off { background-color: var(--danger); box-shadow: 0 4px #c0392b; }
+        .btn-on { background-color: var(--success); box-shadow: 0 4px #1e8449; }
+        .btn:active { transform: translateY(4px); box-shadow: 0 0; }
+
+        #conexion-status { font-size: 11px; margin-top: 15px; color: #95a5a6; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>Invernadero Inteligente</h1>
-    <hr>
-    <p>Humedad Tierra: <span id="tierra" class="sensor-val">0</span>%</p>
-    <p>Luz: <span id="luz" class="sensor-val">0</span></p>
-    <hr>
-    <h3>Control de Bomba</h3>
-    <button id="btnBomba" class="btn off" onclick="enviarSenal()">ENCENDER BOMBA</button>
-    <p id="statusText">Estado: Automático</p>
+<div class="card">
+    <h1>Planta-Pro-Max 🌿</h1>
+    
+    <div class="stat-grid">
+        <div class="stat-box">
+            <span class="stat-label">Humedad Tierra</span>
+            <span id="tierra" class="stat-value">--</span><span class="stat-value">%</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Luz (Raw)</span>
+            <span id="luz" class="stat-value">--</span>
+        </div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;">
+
+    <h3>Control Manual</h3>
+    <button id="btnBomba" class="btn btn-off" onclick="toggleBomba()">Encender Bomba</button>
+    
+    <p id="conexion-status">Estado: Sincronizando con Firebase...</p>
 </div>
 
 <script>
-    // 1. TU CONFIGURACIÓN
+    // --- 1. CONFIGURACIÓN DE FIREBASE ---
     const firebaseConfig = {
-        databaseURL: "https://sensores-temp-y-humedad-default-rtdb.firebaseio.com"
+        databaseURL: "https://sensores-temp-y-humedad-default-rtdb.firebaseio.com/"
     };
     
+    // Inicializar Firebase
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    // 2. ESCUCHAR DATOS (Para ver que hay conexión)
+    let bombaEstadoLocal = false;
+
+    // --- 2. ESCUCHAR DATOS EN TIEMPO REAL ---
+    // Escucha la carpeta 'sensor' que crea el ESP32
     database.ref('sensor').on('value', (snapshot) => {
         const data = snapshot.val();
-        if(data) {
+        if (data) {
             document.getElementById('tierra').innerText = data.tierra || 0;
             document.getElementById('luz').innerText = data.luz || 0;
+            document.getElementById('conexion-status').innerText = "Conexión: OK ✅";
         }
     });
 
-    // 3. FUNCIÓN DEL BOTÓN (ESCRIBIR)
-    let bombaEncendida = false;
+    // Escucha el estado actual de la bomba para sincronizar el botón
+    database.ref('actuadores/bombaManual').on('value', (snapshot) => {
+        bombaEstadoLocal = snapshot.val() || false;
+        actualizarBotonUI(bombaEstadoLocal);
+    });
 
-    function enviarSenal() {
-        bombaEncendida = !bombaEncendida;
+    // --- 3. FUNCIÓN PARA ENVIAR SEÑAL ---
+    function toggleBomba() {
+        const nuevoEstado = !bombaEstadoLocal;
         
-        // Escribimos en la ruta exacta que lee el ESP32
-        database.ref('actuadores').update({
-            bombaManual: bombaEncendida
-        })
+        // Escribimos en la ruta absoluta. Esto CREARÁ la carpeta si no existe.
+        database.ref('actuadores/bombaManual').set(nuevoEstado)
         .then(() => {
-            console.log("Enviado a Firebase: ", bombaEncendida);
-            actualizarUI();
+            console.log("Comando enviado: " + nuevoEstado);
         })
         .catch((error) => {
-            console.error("Error al enviar: ", error);
-            alert("Error de conexión con Firebase");
+            console.error("Error al enviar:", error);
+            alert("Error de permisos: Revisa las Reglas de Firebase");
         });
     }
 
-    function actualizarUI() {
+    function actualizarBotonUI(estado) {
         const btn = document.getElementById('btnBomba');
-        const txt = document.getElementById('statusText');
-        
-        if(bombaEncendida) {
-            btn.innerText = "APAGAR BOMBA";
-            btn.className = "btn on";
-            txt.innerText = "Estado: Manual (Encendido)";
+        if (estado) {
+            btn.innerText = "Apagar Bomba";
+            btn.className = "btn btn-on";
         } else {
-            btn.innerText = "ENCENDER BOMBA";
-            btn.className = "btn off";
-            txt.innerText = "Estado: Automático / Apagado";
+            btn.innerText = "Encender Bomba";
+            btn.className = "btn btn-off";
         }
     }
 </script>
