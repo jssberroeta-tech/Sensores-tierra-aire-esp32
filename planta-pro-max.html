@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planta-Pro-Max v3.0 — Invernadero Inteligente</title>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <style>
+        /* ── TOKENS ─────────────────────────────────────────── */
+        :root {
+            --green:      #22c55e;
+            --green-dark: #16a34a;
+            --blue:       #38bdf8;
+            --amber:      #fbbf24;
+            --red:        #f87171;
+            --red-dark:   #dc2626;
+            --bg:         #0f172a;
+            --surface:    #1e293b;
+            --surface2:   #273044;
+            --border:     #334155;
+            --text:       #f1f5f9;
+            --muted:      #94a3b8;
+            --radius:     16px;
+            --shadow:     0 4px 24px rgba(0,0,0,.35);
+        }
+
+        /* ── RESET / BASE ────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px 16px 60px;
+            transition: background .4s;
+        }
+
+        body.critical { background: #1a0a0a; }
+
+        /* ── LAYOUT ──────────────────────────────────────────── */
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        /* ── HEADER ──────────────────────────────────────────── */
+        header {
+            text-align: center;
+            padding: 32px 0 20px;
+        }
+
+        header h1 {
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--green);
+        }
+
+        header p { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+
+        .badge {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 6px 16px;
+            border-radius: 99px;
+            font-size: .78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            background: var(--surface2);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            transition: background .3s, color .3s;
+        }
+
+        .badge.ok     { background: #052e16; color: var(--green); border-color: var(--green-dark); }
+        .badge.danger { background: #450a0a; color: var(--red);   border-color: var(--red-dark); }
+
+        /* ── CRITICAL BANNER ─────────────────────────────────── */
+        .alert-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: var(--red-dark);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            font-weight: 700;
+            font-size: .95rem;
+            animation: pulse-border 1.4s infinite;
+        }
+
+        .alert-banner.visible { display: flex; }
+
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,.5); }
+            50%       { box-shadow: 0 0 0 8px rgba(248,113,113,0); }
+        }
+
+        /* ── SENSOR GRID ─────────────────────────────────────── */
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 20px 20px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: transform .25s, border-color .3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 0 0 var(--radius) var(--radius);
+        }
+
+        .card.temp::after  { background: #fb923c; }
+        .card.hum::after   { background: var(--blue); }
+        .card.tierra::after{ background: #a78bfa; }
+        .card.luz::after   { background: var(--amber); }
+
+        .card:hover { transform: translateY(-4px); }
+        .card.alerta { border-color: var(--red); animation: card-pulse 1.5s infinite; }
+
+        @keyframes card-pulse {
+            0%, 100% { transform: scale(1); }
+            50%       { transform: scale(1.025); }
+        }
+
+        .card .icon { font-size: 2rem; display: block; margin-bottom: 10px; }
+
+        .card .sensor-label {
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .card .sensor-value {
+            font-size: 2.4rem;
+            font-weight: 900;
+            line-height: 1.1;
+            margin: 6px 0 2px;
+            color: var(--text);
+        }
+
+        .card .sensor-unit {
+            font-size: .85rem;
+            color: var(--muted);
+        }
+
+        /* ── CONTROL PANEL ───────────────────────────────────── */
+        .control-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px 24px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .control-panel h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 20px;
+        }
+
+        .btn-pump {
+            display: inline-block;
+            padding: 18px 56px;
+            font-size: 1.05rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: none;
+            border-radius: 99px;
+            cursor: pointer;
+            color: #fff;
+            transition: transform .15s, box-shadow .2s, background .3s;
+        }
+
+        .btn-pump.off {
+            background: var(--red-dark);
+            box-shadow: 0 6px 0 #991b1b;
+        }
+
+        .btn-pump.on {
+            background: var(--green-dark);
+            box-shadow: 0 6px 0 #14532d;
+        }
+
+        .btn-pump:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 transparent;
+        }
+
+        .pump-status {
+            margin-top: 14px;
+            font-size: .88rem;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        /* ── CHART SECTION ───────────────────────────────────── */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .chart-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .chart-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+        }
+
+        .chart-toggles {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toggle-btn {
+            padding: 6px 14px;
+            border-radius: 99px;
+            border: 2px solid transparent;
+            font-size: .78rem;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--surface2);
+            color: var(--muted);
+            transition: .2s;
+        }
+
+        .toggle-btn.active-temp  { border-color: #fb923c; color: #fb923c; background: rgba(251,146,60,.1); }
+        .toggle-btn.active-hum   { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,.1); }
+        .toggle-btn.active-tierra{ border-color: #a78bfa; color: #a78bfa; background: rgba(167,139,250,.1); }
+
+        .chart-wrap {
+            position: relative;
+            height: 300px;
+        }
+
+        .chart-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            gap: 8px;
+            font-size: .9rem;
+        }
+
+        .chart-empty span { font-size: 2rem; }
+
+        /* ── FOOTER ──────────────────────────────────────────── */
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: var(--muted);
+            font-size: .78rem;
+        }
+
+        /* ── RESPONSIVE ──────────────────────────────────────── */
+        @media (max-width: 500px) {
+            .btn-pump { padding: 16px 36px; }
+            .chart-wrap { height: 240px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+    <header>
+        <h1>🌿 Planta-Pro-Max v3.0</h1>
+        <p>Sistema de monitoreo y control para invernadero inteligente</p>
+        <span id="status-badge" class="badge">Conectando a Firebase…</span>
+    </header>
+
+    <!-- ALERT BANNER -->
+    <div id="alert-banner" class="alert-banner" role="alert">
+        <span>🚨</span>
+        <span>ALERTA CRÍTICA — Ambiente peligroso para la planta (T &gt; 27 °C y H &gt; 80 %)</span>
+    </div>
+
+    <!-- SENSOR CARDS -->
+    <div class="sensor-grid">
+        <div class="card temp" id="card-temp">
+            <span class="icon">🌡️</span>
+            <span class="sensor-label">Temperatura</span>
+            <span class="sensor-value" id="val-temp">—</span>
+            <span class="sensor-unit">°C</span>
+        </div>
+        <div class="card hum" id="card-hum">
+            <span class="icon">☁️</span>
+            <span class="sensor-label">Humedad Aire</span>
+            <span class="sensor-value" id="val-hum">—</span>
+            <span class="sensor-unit">%</span>
+        </div>
+        <div class="card tierra" id="card-tierra">
+            <span class="icon">🪴</span>
+            <span class="sensor-label">Humedad Suelo</span>
+            <span class="sensor-value" id="val-tierra">—</span>
+            <span class="sensor-unit">%</span>
+        </div>
+        <div class="card luz" id="card-luz">
+            <span class="icon">☀️</span>
+            <span class="sensor-label">Luz</span>
+            <span class="sensor-value" id="val-luz">—</span>
+            <span class="sensor-unit">raw</span>
+        </div>
+    </div>
+
+    <!-- PUMP CONTROL -->
+    <div class="control-panel">
+        <h2>Control de Riego</h2>
+        <button id="btn-pump" class="btn-pump off" onclick="toggleBomba()">Cargando…</button>
+        <p id="pump-status" class="pump-status">Obteniendo estado actual…</p>
+    </div>
+
+    <!-- HISTORICAL CHART -->
+    <div class="chart-section">
+        <div class="chart-header">
+            <h2>📈 Histórico — últimas 50 lecturas</h2>
+            <div class="chart-toggles">
+                <button class="toggle-btn active-temp"   id="toggle-temp"   onclick="toggleDataset(0)">🌡️ Temperatura</button>
+                <button class="toggle-btn active-hum"    id="toggle-hum"    onclick="toggleDataset(1)">☁️ Hum. Aire</button>
+                <button class="toggle-btn active-tierra" id="toggle-tierra" onclick="toggleDataset(2)">🪴 Hum. Suelo</button>
+            </div>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="historicalChart"></canvas>
+            <div id="chart-empty" class="chart-empty">
+                <span>📡</span>
+                <p>Esperando datos históricos de Firebase…</p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Sistema Planta-Pro-Max v3.0 &nbsp;·&nbsp; ESP32 + Firebase + Chart.js
+    </footer>
+
+</div>
+
+<script>
+    // ── FIREBASE CONFIG ────────────────────────────────────────
+    const firebaseConfig = {
+        databaseURL: "https://sensores-temp-y-humedad-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ── STATE ──────────────────────────────────────────────────
+    let bombaManual = false;
+
+    // ── SENSOR LISTENER ───────────────────────────────────────
+    db.ref('sensor').on('value', (snap) => {
+        const d = snap.val();
+        if (!d) return;
+
+        document.getElementById('val-temp').textContent   = d.temperatura ?? '—';
+        document.getElementById('val-hum').textContent    = d.humedad     ?? '—';
+        document.getElementById('val-tierra').textContent = d.tierra      ?? '—';
+        document.getElementById('val-luz').textContent    = d.luz         ?? '—';
+
+        const badge  = document.getElementById('status-badge');
+        const banner = document.getElementById('alert-banner');
+        const isDanger = (d.humedad > 80 && d.temperatura > 27);
+
+        ['card-temp','card-hum','card-tierra','card-luz'].forEach(id => {
+            document.getElementById(id).classList.toggle('alerta', isDanger);
+        });
+
+        if (isDanger) {
+            document.body.classList.add('critical');
+            banner.classList.add('visible');
+            badge.className = 'badge danger';
+            badge.textContent = '🚨 Estado Crítico';
+        } else {
+            document.body.classList.remove('critical');
+            banner.classList.remove('visible');
+            badge.className = 'badge ok';
+            badge.textContent = '✅ Conexión Estable';
+        }
+    });
+
+    // ── PUMP LISTENER ─────────────────────────────────────────
+    db.ref('actuadores/bombaManual').on('value', (snap) => {
+        bombaManual = snap.val() || false;
+        const btn    = document.getElementById('btn-pump');
+        const status = document.getElementById('pump-status');
+
+        if (bombaManual) {
+            btn.textContent  = 'Apagar Bomba';
+            btn.className    = 'btn-pump on';
+            status.textContent = 'MODO MANUAL — BOMBA ENCENDIDA 💧';
+            status.style.color = '#22c55e';
+        } else {
+            btn.textContent  = 'Encender Bomba';
+            btn.className    = 'btn-pump off';
+            status.textContent = 'MODO AUTOMÁTICO — BOMBA APAGADA';
+            status.style.color = '#94a3b8';
+        }
+    });
+
+    function toggleBomba() {
+        db.ref('actuadores/bombaManual').set(!bombaManual)
+            .catch(err => alert('Error Firebase: ' + err.message));
+    }
+
+    // ── CHART SETUP ───────────────────────────────────────────
+    const ctx = document.getElementById('historicalChart').getContext('2d');
+
+    const chartData = {
+        labels: [],
+        datasets: [
+            {
+                label: 'Temperatura (°C)',
+                data: [],
+                borderColor: '#fb923c',
+                backgroundColor: 'rgba(251,146,60,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            },
+            {
+                label: 'Humedad Aire (%)',
+                data: [],
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56,189,248,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            },
+            {
+                label: 'Humedad Suelo (%)',
+                data: [],
+                borderColor: '#a78bfa',
+                backgroundColor: 'rgba(167,139,250,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            }
+        ]
+    };
+
+    const historicalChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    borderColor: '#334155',
+                    borderWidth: 1,
+                    titleColor: '#94a3b8',
+                    bodyColor: '#f1f5f9',
+                    padding: 12,
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#64748b',
+                        maxTicksLimit: 8,
+                        maxRotation: 0,
+                        font: { size: 10 }
+                    },
+                    grid: { color: '#1e293b' }
+                },
+                y: {
+                    ticks: { color: '#64748b', font: { size: 11 } },
+                    grid: { color: '#273044' }
+                }
+            }
+        }
+    });
+
+    // ── HISTORY LISTENER ──────────────────────────────────────
+    db.ref('historial').limitToLast(50).on('value', (snap) => {
+        const raw = snap.val();
+        const empty = document.getElementById('chart-empty');
+
+        if (!raw) {
+            empty.style.display = 'flex';
+            return;
+        }
+
+        empty.style.display = 'none';
+
+        const entries = Object.values(raw);
+
+        chartData.labels = entries.map((e, i) => {
+            // Use timestamp if available, otherwise use index
+            if (e.timestamp) {
+                const d = new Date(e.timestamp);
+                return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            }
+            return `#${i + 1}`;
+        });
+
+        chartData.datasets[0].data = entries.map(e => e.temperatura ?? null);
+        chartData.datasets[1].data = entries.map(e => e.humedad     ?? null);
+        chartData.datasets[2].data = entries.map(e => e.tierra      ?? null);
+
+        historicalChart.update('none'); // skip animation on data refresh
+    });
+
+    // ── DATASET TOGGLE ─────────────────────────────────────────
+    const toggleClasses = ['active-temp', 'active-hum', 'active-tierra'];
+    const toggleIds     = ['toggle-temp', 'toggle-hum', 'toggle-tierra'];
+
+    function toggleDataset(index) {
+        const meta = historicalChart.getDatasetMeta(index);
+        meta.hidden = !meta.hidden;
+        const btn = document.getElementById(toggleIds[index]);
+        btn.classList.toggle(toggleClasses[index]);
+        historicalChart.update();
+    }
+</script>
+</body>
+</html>
