@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planta-Pro-Max v4.0 — Invernadero Inteligente + IA</title>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <style>
+        /* ── TOKENS ─────────────────────────────────────────── */
+        :root {
+            --green:      #22c55e;
+            --green-dark: #16a34a;
+            --blue:       #38bdf8;
+            --amber:      #fbbf24;
+            --red:        #f87171;
+            --red-dark:   #dc2626;
+            --purple:     #a78bfa;
+            --purple-dark:#7c3aed;
+            --bg:         #0f172a;
+            --surface:    #1e293b;
+            --surface2:   #273044;
+            --border:     #334155;
+            --text:       #f1f5f9;
+            --muted:      #94a3b8;
+            --radius:     16px;
+            --shadow:     0 4px 24px rgba(0,0,0,.35);
+        }
+
+        /* ── RESET / BASE ────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px 16px 60px;
+            transition: background .4s;
+        }
+
+        body.critical { background: #1a0a0a; }
+
+        /* ── LAYOUT ──────────────────────────────────────────── */
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        /* ── HEADER ──────────────────────────────────────────── */
+        header {
+            text-align: center;
+            padding: 32px 0 20px;
+        }
+
+        header h1 {
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--green);
+        }
+
+        header p { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+
+        /* ── BADGE ROW ───────────────────────────────────────── */
+        .badge-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 99px;
+            font-size: .78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            background: var(--surface2);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            transition: background .3s, color .3s, border-color .3s;
+        }
+
+        .badge.ok      { background: #052e16; color: var(--green);  border-color: var(--green-dark); }
+        .badge.danger  { background: #450a0a; color: var(--red);    border-color: var(--red-dark);   }
+        .badge.ia-ok   { background: #1e1b4b; color: var(--purple); border-color: var(--purple-dark);}
+        .badge.ia-warn { background: #450a0a; color: var(--red);    border-color: var(--red-dark);   }
+        .badge.ia-idle { background: var(--surface2); color: var(--muted); border-color: var(--border); }
+
+        /* ── CRITICAL BANNER ─────────────────────────────────── */
+        .alert-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: var(--red-dark);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            font-weight: 700;
+            font-size: .95rem;
+            animation: pulse-border 1.4s infinite;
+        }
+
+        .alert-banner.visible { display: flex; }
+
+        /* ── IA BANNER (anomalía detectada) ─────────────────── */
+        .ia-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: #3b0764;
+            color: #e9d5ff;
+            padding: 14px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            font-weight: 700;
+            font-size: .95rem;
+            border: 1px solid var(--purple-dark);
+            animation: pulse-border 1.8s infinite;
+        }
+
+        .ia-banner.visible { display: flex; }
+
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,.5); }
+            50%       { box-shadow: 0 0 0 8px rgba(248,113,113,0); }
+        }
+
+        /* ── IA PANEL ────────────────────────────────────────── */
+        .ia-panel {
+            background: var(--surface);
+            border: 1px solid var(--purple-dark);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .ia-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .ia-panel-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--purple);
+        }
+
+        .ia-estado-display {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .ia-estado-box {
+            flex: 1;
+            min-width: 160px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .ia-estado-box .ia-label {
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .ia-estado-box .ia-value {
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: var(--purple);
+            letter-spacing: -0.5px;
+        }
+
+        .ia-estado-box .ia-value.anomalia { color: var(--red); }
+        .ia-estado-box .ia-value.normal   { color: var(--green); }
+
+        .ia-confidence-bar-wrap {
+            flex: 2;
+            min-width: 180px;
+        }
+
+        .ia-confidence-bar-wrap .conf-label {
+            font-size: .8rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .ia-bar-bg {
+            background: var(--surface2);
+            border-radius: 99px;
+            height: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .ia-bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            background: var(--purple);
+            width: 0%;
+            transition: width .6s ease, background .4s;
+        }
+
+        .ia-bar-fill.anomalia { background: var(--red); }
+        .ia-bar-fill.normal   { background: var(--green); }
+
+        /* ── SENSOR GRID ─────────────────────────────────────── */
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 20px 20px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: transform .25s, border-color .3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 0 0 var(--radius) var(--radius);
+        }
+
+        .card.temp::after   { background: #fb923c; }
+        .card.hum::after    { background: var(--blue); }
+        .card.tierra::after { background: #a78bfa; }
+        .card.luz::after    { background: var(--amber); }
+
+        .card:hover { transform: translateY(-4px); }
+        .card.alerta { border-color: var(--red); animation: card-pulse 1.5s infinite; }
+
+        @keyframes card-pulse {
+            0%, 100% { transform: scale(1); }
+            50%       { transform: scale(1.025); }
+        }
+
+        .card .icon         { font-size: 2rem; display: block; margin-bottom: 10px; }
+        .card .sensor-label { font-size: .72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 600; }
+        .card .sensor-value { font-size: 2.4rem; font-weight: 900; line-height: 1.1; margin: 6px 0 2px; color: var(--text); }
+        .card .sensor-unit  { font-size: .85rem; color: var(--muted); }
+
+        /* ── CONTROL PANEL ───────────────────────────────────── */
+        .control-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px 24px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .control-panel h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 20px;
+        }
+
+        .btn-pump {
+            display: inline-block;
+            padding: 18px 56px;
+            font-size: 1.05rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: none;
+            border-radius: 99px;
+            cursor: pointer;
+            color: #fff;
+            transition: transform .15s, box-shadow .2s, background .3s;
+        }
+
+        .btn-pump.off { background: var(--red-dark); box-shadow: 0 6px 0 #991b1b; }
+        .btn-pump.on  { background: var(--green-dark); box-shadow: 0 6px 0 #14532d; }
+        .btn-pump:active { transform: translateY(4px); box-shadow: 0 0 0 transparent; }
+
+        .pump-status { margin-top: 14px; font-size: .88rem; font-weight: 600; color: var(--muted); }
+
+        /* ── CHART SECTION ───────────────────────────────────── */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .chart-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .chart-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+        }
+
+        .chart-toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .toggle-btn {
+            padding: 6px 14px;
+            border-radius: 99px;
+            border: 2px solid transparent;
+            font-size: .78rem;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--surface2);
+            color: var(--muted);
+            transition: .2s;
+        }
+
+        .toggle-btn.active-temp   { border-color: #fb923c;       color: #fb923c;       background: rgba(251,146,60,.1); }
+        .toggle-btn.active-hum    { border-color: var(--blue);   color: var(--blue);   background: rgba(56,189,248,.1); }
+        .toggle-btn.active-tierra { border-color: #a78bfa;       color: #a78bfa;       background: rgba(167,139,250,.1); }
+
+        .chart-wrap {
+            position: relative;
+            height: 300px;
+        }
+
+        .chart-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            gap: 8px;
+            font-size: .9rem;
+        }
+
+        .chart-empty span { font-size: 2rem; }
+
+        /* ── FOOTER ──────────────────────────────────────────── */
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: var(--muted);
+            font-size: .78rem;
+        }
+
+        /* ── RESPONSIVE ──────────────────────────────────────── */
+        @media (max-width: 500px) {
+            .btn-pump    { padding: 16px 36px; }
+            .chart-wrap  { height: 240px; }
+            .ia-estado-display { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+    <header>
+        <h1>🌿 Planta-Pro-Max v4.0</h1>
+        <p>Sistema de monitoreo y control para invernadero inteligente + IA TinyML</p>
+        <!-- Badge row: conexión + badge IA -->
+        <div class="badge-row">
+            <span id="status-badge" class="badge">Conectando a Firebase…</span>
+            <span id="ia-badge"     class="badge ia-idle">🤖 Cargando IA…</span>
+        </div>
+    </header>
+
+    <!-- ALERT BANNER — sensores críticos [FIX-5] -->
+    <div id="alert-banner" class="alert-banner" role="alert">
+        <span>🚨</span>
+        <span id="alert-text">ALERTA CRÍTICA — Condición peligrosa detectada</span>
+    </div>
+
+    <!-- IA BANNER — anomalía TinyML -->
+    <div id="ia-banner" class="ia-banner" role="alert">
+        <span>🤖</span>
+        <span>ANOMALÍA DETECTADA POR IA — Patrón fuera de rango histórico normal</span>
+    </div>
+
+    <!-- IA PANEL -->
+    <div class="ia-panel">
+        <div class="ia-panel-header">
+            <h2>🤖 Análisis IA en Tiempo Real — Edge Impulse TinyML</h2>
+        </div>
+        <div class="ia-estado-display">
+            <div class="ia-estado-box">
+                <div class="ia-label">Estado IA</div>
+                <div class="ia-value" id="ia-estado-val">—</div>
+            </div>
+            <div class="ia-confidence-bar-wrap">
+                <div class="conf-label">
+                    <span>Confianza del modelo</span>
+                    <span id="ia-conf-text">—</span>
+                </div>
+                <div class="ia-bar-bg">
+                    <div class="ia-bar-fill" id="ia-bar"></div>
+                </div>
+                <div style="margin-top:10px; font-size:.78rem; color:var(--muted);">
+                    Los datos se actualizan cada 5 s desde el ESP32. Sin modelo cargado muestra SIN_MODELO.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SENSOR CARDS -->
+    <div class="sensor-grid">
+        <div class="card temp" id="card-temp">
+            <span class="icon">🌡️</span>
+            <span class="sensor-label">Temperatura</span>
+            <span class="sensor-value" id="val-temp">—</span>
+            <span class="sensor-unit">°C</span>
+        </div>
+        <div class="card hum" id="card-hum">
+            <span class="icon">☁️</span>
+            <span class="sensor-label">Humedad Aire</span>
+            <span class="sensor-value" id="val-hum">—</span>
+            <span class="sensor-unit">%</span>
+        </div>
+        <div class="card tierra" id="card-tierra">
+            <span class="icon">🪴</span>
+            <span class="sensor-label">Humedad Suelo</span>
+            <span class="sensor-value" id="val-tierra">—</span>
+            <span class="sensor-unit">%</span>
+        </div>
+        <div class="card luz" id="card-luz">
+            <span class="icon">☀️</span>
+            <span class="sensor-label">Luz</span>
+            <span class="sensor-value" id="val-luz">—</span>
+            <span class="sensor-unit">raw</span>
+        </div>
+    </div>
+
+    <!-- PUMP CONTROL -->
+    <div class="control-panel">
+        <h2>Control de Riego</h2>
+        <button id="btn-pump" class="btn-pump off" onclick="toggleBomba()">Cargando…</button>
+        <p id="pump-status" class="pump-status">Obteniendo estado actual…</p>
+    </div>
+
+    <!-- HISTORICAL CHART -->
+    <div class="chart-section">
+        <div class="chart-header">
+            <h2>📈 Histórico — últimas 50 lecturas</h2>
+            <div class="chart-toggles">
+                <button class="toggle-btn active-temp"   id="toggle-temp"   onclick="toggleDataset(0)">🌡️ Temperatura</button>
+                <button class="toggle-btn active-hum"    id="toggle-hum"    onclick="toggleDataset(1)">☁️ Hum. Aire</button>
+                <button class="toggle-btn active-tierra" id="toggle-tierra" onclick="toggleDataset(2)">🪴 Hum. Suelo</button>
+            </div>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="historicalChart"></canvas>
+            <div id="chart-empty" class="chart-empty">
+                <span>📡</span>
+                <p>Esperando datos históricos de Firebase…</p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Sistema Planta-Pro-Max v4.0 &nbsp;·&nbsp; ESP32 + Firebase + Chart.js + Edge Impulse TinyML
+    </footer>
+
+</div>
+
+<script>
+    // ── FIREBASE CONFIG ────────────────────────────────────────
+    const firebaseConfig = {
+        databaseURL: "https://sensores-temp-y-humedad-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ── STATE ──────────────────────────────────────────────────
+    let bombaManual = false;
+
+    // ── UMBRALES (deben coincidir exactamente con el ESP32) ────
+    // [FIX] Condición unificada con los #define del firmware
+    const UMBRALES = {
+        TEMP_CRITICO_BAJO:  12.0,
+        TEMP_CRITICO_ALTO:  32.0,
+        HUM_CRITICO_BAJO:   30.0,
+        HUM_CRITICO_ALTO:   80.0,
+        TIERRA_CRITICO_BAJO: 30.0,
+        TIERRA_CRITICO_ALTO: 80.0
+    };
+
+    function evaluarAlarma(d) {
+        // [FIX] Usa alarmaActiva del ESP32 como fuente principal
+        if (d.alarmaActiva === true) return true;
+        // Fallback local si el campo no existe aún (retrocompatibilidad)
+        return (
+            d.temperatura < UMBRALES.TEMP_CRITICO_BAJO ||
+            d.temperatura > UMBRALES.TEMP_CRITICO_ALTO ||
+            d.humedad     < UMBRALES.HUM_CRITICO_BAJO  ||
+            d.humedad     > UMBRALES.HUM_CRITICO_ALTO  ||
+            d.tierra      < UMBRALES.TIERRA_CRITICO_BAJO ||
+            d.tierra      > UMBRALES.TIERRA_CRITICO_ALTO
+        );
+    }
+
+    function getAlertaTexto(d) {
+        if (d.temperatura < UMBRALES.TEMP_CRITICO_BAJO) return `ALERTA CRÍTICA — Temperatura muy baja: ${d.temperatura}°C`;
+        if (d.temperatura > UMBRALES.TEMP_CRITICO_ALTO) return `ALERTA CRÍTICA — Temperatura muy alta: ${d.temperatura}°C`;
+        if (d.humedad     < UMBRALES.HUM_CRITICO_BAJO)  return `ALERTA CRÍTICA — Ambiente muy seco: ${d.humedad}%`;
+        if (d.humedad     > UMBRALES.HUM_CRITICO_ALTO)  return `ALERTA CRÍTICA — Ambiente muy húmedo: ${d.humedad}%`;
+        if (d.tierra      < UMBRALES.TIERRA_CRITICO_BAJO) return `ALERTA CRÍTICA — Tierra muy seca: ${d.tierra}%`;
+        if (d.tierra      > UMBRALES.TIERRA_CRITICO_ALTO) return `ALERTA CRÍTICA — Tierra inundada: ${d.tierra}%`;
+        return 'ALERTA CRÍTICA — Condición peligrosa detectada';
+    }
+
+    // ── SENSOR LISTENER ───────────────────────────────────────
+    db.ref('sensor').on('value', (snap) => {
+        const d = snap.val();
+        if (!d) return;
+
+        // Actualizar tarjetas de sensores
+        document.getElementById('val-temp').textContent   = d.temperatura ?? '—';
+        document.getElementById('val-hum').textContent    = d.humedad     ?? '—';
+        document.getElementById('val-tierra').textContent = d.tierra      ?? '—';
+        document.getElementById('val-luz').textContent    = d.luz         ?? '—';
+
+        const badge  = document.getElementById('status-badge');
+        const banner = document.getElementById('alert-banner');
+        const alertText = document.getElementById('alert-text');
+
+        // [FIX] Condición de alarma unificada con firmware
+        const isDanger = evaluarAlarma(d);
+
+        ['card-temp','card-hum','card-tierra','card-luz'].forEach(id => {
+            document.getElementById(id).classList.toggle('alerta', isDanger);
+        });
+
+        if (isDanger) {
+            document.body.classList.add('critical');
+            banner.classList.add('visible');
+            alertText.textContent = getAlertaTexto(d);
+            badge.className   = 'badge danger';
+            badge.textContent = '🚨 Estado Crítico';
+        } else {
+            document.body.classList.remove('critical');
+            banner.classList.remove('visible');
+            badge.className   = 'badge ok';
+            badge.textContent = '✅ Conexión Estable';
+        }
+
+        // ── Actualizar Panel IA ──────────────────────────────
+        const iaEstado    = (d.iaEstado    ?? 'SIN_MODELO').toLowerCase();
+        const iaConfianza = d.iaConfianza  ?? 0;
+        const iaPct       = Math.round(iaConfianza * 100);
+
+        const iaValEl  = document.getElementById('ia-estado-val');
+        const iaBarEl  = document.getElementById('ia-bar');
+        const iaConfEl = document.getElementById('ia-conf-text');
+        const iaBadge  = document.getElementById('ia-badge');
+        const iaBanner = document.getElementById('ia-banner');
+
+        // Normalizar: K-means devuelve score numérico (no porcentaje)
+        // Clasificación devuelve probabilidad 0-1
+        const barPct = iaConfianza <= 1.0 ? iaPct : Math.min(Math.round(iaConfianza * 10), 100);
+
+        iaValEl.textContent  = iaEstado.toUpperCase();
+        iaValEl.className    = 'ia-value ' + (iaEstado === 'anomalia' ? 'anomalia' :
+                                               iaEstado === 'normal'   ? 'normal'   : '');
+        iaBarEl.style.width  = barPct + '%';
+        iaBarEl.className    = 'ia-bar-fill ' + (iaEstado === 'anomalia' ? 'anomalia' :
+                                                  iaEstado === 'normal'   ? 'normal'   : '');
+        iaConfEl.textContent = iaEstado === 'sin_modelo' ? 'Sin modelo' : barPct + '%';
+
+        if (iaEstado === 'anomalia') {
+            iaBadge.textContent = `🤖 IA: ANOMALÍA (${barPct}%)`;
+            iaBadge.className   = 'badge ia-warn';
+            iaBanner.classList.add('visible');
+        } else if (iaEstado === 'normal') {
+            iaBadge.textContent = `🤖 IA: NORMAL (${barPct}%)`;
+            iaBadge.className   = 'badge ia-ok';
+            iaBanner.classList.remove('visible');
+        } else {
+            iaBadge.textContent = '🤖 IA: ' + iaEstado.toUpperCase();
+            iaBadge.className   = 'badge ia-idle';
+            iaBanner.classList.remove('visible');
+        }
+    });
+
+    // ── PUMP LISTENER ─────────────────────────────────────────
+    db.ref('actuadores/bombaManual').on('value', (snap) => {
+        bombaManual = snap.val() || false;
+        const btn    = document.getElementById('btn-pump');
+        const status = document.getElementById('pump-status');
+
+        if (bombaManual) {
+            btn.textContent    = 'Apagar Bomba';
+            btn.className      = 'btn-pump on';
+            status.textContent = 'MODO MANUAL — BOMBA ENCENDIDA 💧';
+            status.style.color = '#22c55e';
+        } else {
+            btn.textContent    = 'Encender Bomba';
+            btn.className      = 'btn-pump off';
+            status.textContent = 'MODO AUTOMÁTICO — BOMBA APAGADA';
+            status.style.color = '#94a3b8';
+        }
+    });
+
+    function toggleBomba() {
+        db.ref('actuadores/bombaManual').set(!bombaManual)
+            .catch(err => alert('Error Firebase: ' + err.message));
+    }
+
+    // ── CHART SETUP ───────────────────────────────────────────
+    const ctx = document.getElementById('historicalChart').getContext('2d');
+
+    const chartData = {
+        labels: [],
+        datasets: [
+            {
+                label: 'Temperatura (°C)',
+                data: [],
+                borderColor: '#fb923c',
+                backgroundColor: 'rgba(251,146,60,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            },
+            {
+                label: 'Humedad Aire (%)',
+                data: [],
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56,189,248,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            },
+            {
+                label: 'Humedad Suelo (%)',
+                data: [],
+                borderColor: '#a78bfa',
+                backgroundColor: 'rgba(167,139,250,.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.35,
+                fill: true,
+            }
+        ]
+    };
+
+    const historicalChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    borderColor: '#334155',
+                    borderWidth: 1,
+                    titleColor: '#94a3b8',
+                    bodyColor: '#f1f5f9',
+                    padding: 12,
+                    callbacks: {
+                        // Mostrar estado IA en tooltip si está disponible
+                        afterBody: function(context) {
+                            const idx = context[0].dataIndex;
+                            const entry = window._historialEntries?.[idx];
+                            if (entry?.iaEstado) {
+                                return [`IA: ${entry.iaEstado.toUpperCase()} (${Math.round((entry.iaConfianza ?? 0) * 100)}%)`];
+                            }
+                            return [];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#64748b', maxTicksLimit: 8, maxRotation: 0, font: { size: 10 } },
+                    grid:  { color: '#1e293b' }
+                },
+                y: {
+                    ticks: { color: '#64748b', font: { size: 11 } },
+                    grid:  { color: '#273044' }
+                }
+            }
+        }
+    });
+
+    // ── HISTORY LISTENER ──────────────────────────────────────
+    db.ref('historial').limitToLast(50).on('value', (snap) => {
+        const raw   = snap.val();
+        const empty = document.getElementById('chart-empty');
+
+        if (!raw) {
+            empty.style.display = 'flex';
+            return;
+        }
+
+        empty.style.display = 'none';
+
+        const entries = Object.values(raw);
+        window._historialEntries = entries; // Cache para tooltips IA
+
+        // [FIX-1] Usar timestamp real del ESP32 (segundos desde boot)
+        chartData.labels = entries.map((e, i) => {
+            if (e.timestamp) {
+                const totalSeg = e.timestamp;
+                const min = Math.floor(totalSeg / 60);
+                const seg = totalSeg % 60;
+                return `${String(min).padStart(2,'0')}:${String(seg).padStart(2,'0')}`;
+            }
+            return `#${i + 1}`;
+        });
+
+        chartData.datasets[0].data = entries.map(e => e.temperatura ?? null);
+        chartData.datasets[1].data = entries.map(e => e.humedad     ?? null);
+        chartData.datasets[2].data = entries.map(e => e.tierra      ?? null);
+
+        historicalChart.update('none');
+    });
+
+    // ── DATASET TOGGLE ─────────────────────────────────────────
+    const toggleClasses = ['active-temp', 'active-hum', 'active-tierra'];
+    const toggleIds     = ['toggle-temp', 'toggle-hum', 'toggle-tierra'];
+
+    function toggleDataset(index) {
+        const meta = historicalChart.getDatasetMeta(index);
+        meta.hidden = !meta.hidden;
+        document.getElementById(toggleIds[index])
+                .classList.toggle(toggleClasses[index]);
+        historicalChart.update();
+    }
+</script>
+</body>
+</html>
